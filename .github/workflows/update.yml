@@ -40,6 +40,10 @@ jobs:
           cd out
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
+          git config credential.helper ""
+          echo "echo ${GH_PAT}" > askpass.sh
+          chmod +x askpass.sh
+          export GIT_ASKPASS=./askpass.sh
           git add docs/
           git commit -m "🤖 Daily CNH update: $(date +'%Y-%m-%d')" || echo "No changes"
-          git push origin main
+          git push https://github.com/${{ github.repository }} HEAD:main
