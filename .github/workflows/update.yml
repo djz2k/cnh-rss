@@ -12,26 +12,25 @@ jobs:
       contents: write
 
     steps:
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Clone repo using GH_PAT
+      - name: Run everything inside GH_PAT-authenticated clone
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |
           git clone https://x-access-token:${GH_PAT}@github.com/${{ github.repository }} repo
           cd repo
+
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+
           python generate_cnh_feed.py
+
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git config credential.helper ""
           echo "echo ${GH_PAT}" > askpass.sh
           chmod +x askpass.sh
           export GIT_ASKPASS=./askpass.sh
+
           git add docs/
           git commit -m "🤖 Daily CNH update: $(date +'%Y-%m-%d')" || echo "No changes"
           git push https://github.com/${{ github.repository }} HEAD:main
