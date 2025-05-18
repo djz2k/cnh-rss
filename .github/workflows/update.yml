@@ -2,17 +2,17 @@ name: Update Cyanide and Happiness Feed
 
 on:
   schedule:
-    - cron: '0 7 * * *'  # Run daily at 7:00 UTC
+    - cron: '0 7 * * *'
   workflow_dispatch:
 
 jobs:
   update-feed:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # ✅ Needed for commit + push to work
+      contents: write
 
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -28,12 +28,12 @@ jobs:
       - name: Run generator script
         run: python generate_cnh_feed.py
 
-      - name: Push changes to repo
+      - name: Push changes to repo using GH_PAT
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
           git remote set-url origin https://x-access-token:${GH_PAT}@github.com/${{ github.repository }}
           git add docs/
           git commit -m "🤖 Daily CNH update: $(date +'%Y-%m-%d')" || echo "No changes to commit"
