@@ -2,15 +2,15 @@ name: Update Cyanide and Happiness Feed
 
 on:
   schedule:
-    - cron: '0 7 * * *'  # Daily at 7:00 UTC
-  workflow_dispatch:
+    - cron: '0 7 * * *'  # Runs daily at 07:00 UTC
+  workflow_dispatch:     # Allow manual triggering from GitHub UI
 
 jobs:
   update-feed:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -23,14 +23,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run generator
-        working-directory: ${{ github.workspace }}
+      - name: Run generator script
         run: python generate_cnh_feed.py
 
-      - name: Commit changes
+      - name: Push changes to repo
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
+          git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}
           git add docs/
-          git commit -m "🤖 Daily CNH update: $(date +'%Y-%m-%d')" || echo "No changes"
-          git push
+          git commit -m "🤖 Daily CNH update: $(date +'%Y-%m-%d')" || echo "No changes to commit"
+          git push origin main
