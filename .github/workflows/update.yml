@@ -8,6 +8,8 @@ on:
 jobs:
   update-feed:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # ✅ Needed for commit + push to work
 
     steps:
       - name: Checkout repo
