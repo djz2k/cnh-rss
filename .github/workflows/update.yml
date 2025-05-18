@@ -30,7 +30,7 @@ jobs:
       - name: Run generator script
         run: python generate_cnh_feed.py
 
-      - name: Push changes with GH_PAT (clean clone)
+      - name: Push changes using clean clone and GH_PAT
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |
