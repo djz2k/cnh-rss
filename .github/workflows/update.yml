@@ -2,21 +2,16 @@ name: Update Cyanide and Happiness Feed
 
 on:
   schedule:
-    - cron: '0 7 * * *'  # Runs daily at 07:00 UTC
-  workflow_dispatch:      # Allow manual runs
+    - cron: '0 7 * * *'
+  workflow_dispatch:
 
 jobs:
   update-feed:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # Required for pushing to the repo
+      contents: write
 
     steps:
-      - name: Checkout with GH_PAT
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GH_PAT }}
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -30,7 +25,7 @@ jobs:
       - name: Run generator script
         run: python generate_cnh_feed.py
 
-      - name: Push changes using clean clone and GH_PAT
+      - name: Push changes using GH_PAT from clean clone
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |
