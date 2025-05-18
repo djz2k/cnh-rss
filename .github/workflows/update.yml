@@ -28,7 +28,7 @@ jobs:
 
       - name: Push changes to repo
         env:
-          GH_TOKEN: ${{ secrets.GH_PAT }}
+          GH_PAT: ${{ secrets.GH_PAT }}
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
