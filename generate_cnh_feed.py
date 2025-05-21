@@ -80,21 +80,21 @@ def generate_html(date_str, image_url, comic_url):
 
 def generate_rss(date_str, title, comic_url, image_url):
     fg = FeedGenerator()
-    fg.load_extension('media', atom=False, rss=True)
-    fg.id(BASE_SITE_URL)
+    fg.load_extension('media')
     fg.title("Cyanide and Happiness Daily")
     fg.link(href=BASE_SITE_URL + "cnh-clean.xml", rel="self")
-    fg.link(href=BASE_SITE_URL, rel="alternate")
-    fg.language("en")
+    fg.link(href=BASE_SITE_URL)
+    fg.description("Daily Cyanide and Happiness comic from Explosm.net")  # ✅ Required
 
     pub_date = datetime.datetime.combine(datetime.datetime.strptime(date_str, "%Y-%m-%d").date(), datetime.time.min).replace(tzinfo=pytz.UTC)
 
     fe = fg.add_entry()
+    fe.id(BASE_SITE_URL + f"cnh-{date_str}.html")
     fe.title(title)
     fe.link(href=BASE_SITE_URL + f"cnh-{date_str}.html")
-    fe.id(BASE_SITE_URL + f"cnh-{date_str}.html")
     fe.pubDate(pub_date)
-    fe.enclosure(image_url, 0, "image/png")
+    fe.description(f'<img src="{image_url}" alt="Cyanide and Happiness Comic" />')
+    fe.media.content({'url': image_url, 'medium': 'image'})
 
     fg.rss_file(RSS_FILE)
     print(f"📡 Wrote RSS feed to {RSS_FILE}")
