@@ -12,6 +12,7 @@ COMIC_URL_FILE = "comic_urls.txt"
 DOCS_DIR = "docs"
 RSS_FILE = os.path.join(DOCS_DIR, "cnh-clean.xml")
 INDEX_FILE = os.path.join(DOCS_DIR, "index.html")
+DEBUG_FILE = "debug.html"
 
 print(f"🌐 Using BASE_SITE_URL: {BASE_SITE_URL}")
 
@@ -25,13 +26,17 @@ def fetch_comic_image(comic_url):
         final_url = resp.url
         soup = BeautifulSoup(resp.text, "html.parser")
 
+        # Save the page for debugging
+        with open(DEBUG_FILE, "w") as dbg:
+            dbg.write(soup.prettify())
+
         # Try Open Graph first
         og_image = soup.find("meta", property="og:image")
         if og_image and og_image.get("content"):
             return final_url, og_image["content"]
 
-        # Fallback: try to find an image inside a known container
-        img_tag = soup.select_one("div#main-comic img, .main-comic img, #comic-wrap img")
+        # Fallback: try #comic-wrap img
+        img_tag = soup.select_one("#comic-wrap img")
         if img_tag and img_tag.get("src"):
             img_url = img_tag["src"]
             if img_url.startswith("//"):
