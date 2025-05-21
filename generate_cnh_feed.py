@@ -22,34 +22,30 @@ def read_comic_urls():
 
 def fetch_comic_image(comic_url):
     try:
-        resp = requests.get(comic_url, timeout=10)
-        final_url = resp.url
+        print(f"🔄 Attempting: {comic_url}")
+        first_resp = requests.get(comic_url, timeout=10)
+        redirected_url = first_resp.url
+        print(f"🔁 Redirected to: {redirected_url}")
+
+        # Re-fetch content from final URL
+        resp = requests.get(redirected_url, timeout=10)
         soup = BeautifulSoup(resp.text, "html.parser")
 
-        # Save the page for debugging
+        # Save for debugging
         with open(DEBUG_FILE, "w") as dbg:
             dbg.write(soup.prettify())
 
-        # Try Open Graph first
         og_image = soup.find("meta", property="og:image")
         if og_image and og_image.get("content"):
-            return final_url, og_image["content"]
+            img_url = og_image["content"]
+            print(f"🖼️ Comic image: {img_url}")
+            return redirected_url, img_url
 
-        # Fallback: try #comic-wrap img
-        img_tag = soup.select_one("#comic-wrap img")
-        if img_tag and img_tag.get("src"):
-            img_url = img_tag["src"]
-            if img_url.startswith("//"):
-                img_url = "https:" + img_url
-            elif img_url.startswith("/"):
-                img_url = "https://explosm.net" + img_url
-            return final_url, img_url
-
-        print("⚠️ No image found in page.")
-        return final_url, None
+        print("⚠️ Couldn't find comic image on page")
+        return redirected_url, None
 
     except Exception as e:
-        print(f"❌ Error fetching comic: {e}")
+        print(f"❌ Error fetching comic image: {e}")
         return comic_url, None
 
 def generate_html(date_str, image_url, comic_url):
@@ -108,7 +104,6 @@ def main():
     today = datetime.datetime.now().strftime("%Y-%m-%d")
     urls = read_comic_urls()
     for comic_url in urls[:10]:
-        print(f"🔄 Attempting: {comic_url}")
         final_url, img_url = fetch_comic_image(comic_url)
         if img_url:
             html_file = generate_html(today, img_url, final_url)
