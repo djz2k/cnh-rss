@@ -33,23 +33,20 @@ def fetch_comic_image(comic_url):
         with open(DEBUG_FILE, "w") as dbg:
             dbg.write(soup.prettify())
 
-        # Try og:image first
+        # Try og:image
         og_image = soup.find("meta", property="og:image")
         if og_image and og_image.get("content"):
             img_url = og_image["content"]
             print(f"🖼️ Found og:image: {img_url}")
             return redirected_url, img_url
 
-        # Fallback: #comic-wrap img
-        img_tag = soup.select_one("#comic-wrap img")
-        if img_tag and img_tag.get("src"):
-            img_url = img_tag["src"]
-            if img_url.startswith("//"):
-                img_url = "https:" + img_url
-            elif img_url.startswith("/"):
-                img_url = "https://explosm.net" + img_url
-            print(f"🖼️ Fallback image: {img_url}")
-            return redirected_url, img_url
+        # Try link rel preload image
+        preload_links = soup.find_all("link", rel="preload", attrs={"as": "image"})
+        for link in preload_links:
+            href = link.get("href", "")
+            if "files.explosm.net/comics" in href:
+                print(f"🖼️ Found preload image: {href}")
+                return redirected_url, href
 
         print("⚠️ Couldn't find comic image on page")
         return redirected_url, None
@@ -125,4 +122,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
