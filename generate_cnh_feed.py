@@ -34,12 +34,12 @@ def fetch_comic_page(url):
 def extract_comic_image(html, base_url):
     soup = BeautifulSoup(html, "html.parser")
 
-    # First try <meta property="og:image">
+    # Try og:image first
     og_img = soup.find("meta", property="og:image")
     if og_img and og_img.get("content"):
         return og_img["content"]
 
-    # Fallback: look for <img> inside any comic section (explosm has updated classes)
+    # Fallback to <img> in known comic domains
     for img_tag in soup.find_all("img"):
         src = img_tag.get("src", "")
         if "files.explosm.net/comics" in src:
@@ -93,10 +93,12 @@ def build_rss_feed(date_str, html_filename, comic_url, img_url):
     pub_dt = datetime.datetime.combine(datetime.date.today(), datetime.time.min).replace(tzinfo=pytz.UTC)
     fe.pubDate(pub_dt)
 
+    # ✅ Register the media namespace before parsing RSS
+    etree.register_namespace("media", "http://search.yahoo.com/mrss/")
     rss_bytes = fg.rss_str(pretty=True)
     rss_root = etree.fromstring(rss_bytes)
-    rss_root.set("xmlns:media", "http://search.yahoo.com/mrss/")
 
+    # ✅ Add media:content to <item>
     channel = rss_root.find("channel")
     latest_item = channel.find("item")
     media_tag = etree.Element("{http://search.yahoo.com/mrss/}content", {
@@ -105,6 +107,7 @@ def build_rss_feed(date_str, html_filename, comic_url, img_url):
     })
     latest_item.append(media_tag)
 
+    # Save updated RSS file
     etree.ElementTree(rss_root).write(FEED_PATH, pretty_print=True, encoding="utf-8", xml_declaration=True)
     print(f"📡 Wrote RSS feed to {FEED_PATH}")
 
@@ -113,7 +116,7 @@ def main():
     today = datetime.date.today()
     date_str = today.isoformat()
 
-    random.seed(str(today))  # ensure repeatable selection for the day
+    random.seed(str(today))  # Deterministic shuffle per day
     random.shuffle(urls)
 
     for i, comic_url in enumerate(urls[:MAX_RETRIES]):
