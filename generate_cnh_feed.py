@@ -25,12 +25,24 @@ def fetch_comic_image(comic_url):
         final_url = resp.url
         soup = BeautifulSoup(resp.text, "html.parser")
 
+        # Try Open Graph first
         og_image = soup.find("meta", property="og:image")
         if og_image and og_image.get("content"):
             return final_url, og_image["content"]
-        else:
-            print("⚠️ No og:image tag found.")
-            return final_url, None
+
+        # Fallback: try to find an image inside a known container
+        img_tag = soup.select_one("div#main-comic img, .main-comic img, #comic-wrap img")
+        if img_tag and img_tag.get("src"):
+            img_url = img_tag["src"]
+            if img_url.startswith("//"):
+                img_url = "https:" + img_url
+            elif img_url.startswith("/"):
+                img_url = "https://explosm.net" + img_url
+            return final_url, img_url
+
+        print("⚠️ No image found in page.")
+        return final_url, None
+
     except Exception as e:
         print(f"❌ Error fetching comic: {e}")
         return comic_url, None
