@@ -1,141 +1,106 @@
+#!/usr/bin/env python3
+
 import os
-import datetime
 import requests
 from bs4 import BeautifulSoup
 from feedgen.feed import FeedGenerator
-from urllib.parse import urljoin
-from lxml import etree
+import datetime
 import pytz
-import random
 
-# Constants
-MAX_RETRIES = 3
-COMIC_URLS_FILE = "comic_urls.txt"
-HTML_OUTPUT_PATH = "docs"
-FEED_PATH = os.path.join(HTML_OUTPUT_PATH, "cnh-clean.xml")
-INDEX_HTML_PATH = os.path.join(HTML_OUTPUT_PATH, "index.html")
 BASE_SITE_URL = "https://djz2k.github.io/cnh-rss/"
+COMIC_URL_FILE = "comic_urls.txt"
+DOCS_DIR = "docs"
+RSS_FILE = os.path.join(DOCS_DIR, "cnh-clean.xml")
+INDEX_FILE = os.path.join(DOCS_DIR, "index.html")
+
+print(f"🌐 Using BASE_SITE_URL: {BASE_SITE_URL}")
 
 def read_comic_urls():
-    with open(COMIC_URLS_FILE) as f:
+    with open(COMIC_URL_FILE, "r") as f:
         return [line.strip() for line in f if line.strip()]
 
-def fetch_comic_page(url):
+def fetch_comic_image(comic_url):
     try:
-        resp = requests.get(url, timeout=10, allow_redirects=True)
-        resp.raise_for_status()
-        if resp.url != url:
-            print(f"🔁 Redirected to: {resp.url}")
-        return resp.text, resp.url
+        resp = requests.get(comic_url, timeout=10)
+        final_url = resp.url
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        og_image = soup.find("meta", property="og:image")
+        if og_image and og_image.get("content"):
+            return final_url, og_image["content"]
+        else:
+            print("⚠️ No og:image tag found.")
+            return final_url, None
     except Exception as e:
-        print(f"❌ Error fetching comic page: {e}")
-        return None, url
+        print(f"❌ Error fetching comic: {e}")
+        return comic_url, None
 
-def extract_comic_image(html, base_url):
-    soup = BeautifulSoup(html, "html.parser")
-
-    # Try og:image first
-    og_img = soup.find("meta", property="og:image")
-    if og_img and og_img.get("content"):
-        return og_img["content"]
-
-    # Fallback to <img> in known comic domains
-    for img_tag in soup.find_all("img"):
-        src = img_tag.get("src", "")
-        if "files.explosm.net/comics" in src:
-            return src if src.startswith("http") else urljoin(base_url, src)
-
-    print("⚠️ Couldn't find comic image on page")
-    return None
-
-def write_html_page(date_str, comic_url, img_url):
-    html_filename = f"cnh-{date_str}.html"
-    full_url = BASE_SITE_URL + html_filename
+def generate_html(date_str, image_url, comic_url):
     html = f"""<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8">
-    <title>Cyanide & Happiness – {date_str}</title>
-    <meta property="og:title" content="Cyanide & Happiness – {date_str}">
-    <meta property="og:image" content="{img_url}">
-    <meta property="og:url" content="{full_url}">
-    <meta name="twitter:card" content="summary_large_image">
-  </head>
-  <body>
-    <h1>Cyanide & Happiness – {date_str}</h1>
-    <p><a href="{comic_url}"><img src="{img_url}" alt="Comic for {date_str}"></a></p>
-  </body>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta property="og:title" content="Cyanide and Happiness - {date_str}">
+  <meta property="og:image" content="{image_url}">
+  <meta property="og:url" content="{BASE_SITE_URL}cnh-{date_str}.html">
+  <title>Cyanide and Happiness - {date_str}</title>
+</head>
+<body>
+  <a href="{comic_url}">
+    <img src="{image_url}" alt="Comic for {date_str}" style="width:100%;max-width:800px;">
+  </a>
+</body>
 </html>"""
-    out_path = os.path.join(HTML_OUTPUT_PATH, html_filename)
-    with open(out_path, "w", encoding="utf-8") as f:
+    filepath = os.path.join(DOCS_DIR, f"cnh-{date_str}.html")
+    with open(filepath, "w") as f:
         f.write(html)
-    print(f"✅ Wrote HTML to {out_path}")
-    return html_filename
+    print(f"✅ Wrote HTML to {filepath}")
+    return filepath
 
-def update_index_html(latest_html_filename):
-    with open(INDEX_HTML_PATH, "w", encoding="utf-8") as f:
-        f.write(f'<meta http-equiv="refresh" content="0; url={latest_html_filename}">')
-
-def build_rss_feed(date_str, html_filename, comic_url, img_url):
+def generate_rss(date_str, title, comic_url, image_url):
     fg = FeedGenerator()
-    fg.load_extension("podcast")
+    fg.load_extension('media', atom=False, rss=True)
+    fg.id(BASE_SITE_URL)
     fg.title("Cyanide and Happiness Daily")
-    fg.link(href="https://explosm.net/", rel="alternate")
     fg.link(href=BASE_SITE_URL + "cnh-clean.xml", rel="self")
-    fg.description("Daily Cyanide and Happiness comic feed")
+    fg.link(href=BASE_SITE_URL, rel="alternate")
     fg.language("en")
 
+    pub_date = datetime.datetime.combine(datetime.datetime.strptime(date_str, "%Y-%m-%d").date(), datetime.time.min).replace(tzinfo=pytz.UTC)
+
     fe = fg.add_entry()
-    fe.title(f"CNH for {date_str}")
-    fe.link(href=BASE_SITE_URL + html_filename)
-    fe.id(BASE_SITE_URL + html_filename)
-    fe.description(f"<![CDATA[<img src='{img_url}' alt='Cyanide & Happiness comic'>]]>")
-    pub_dt = datetime.datetime.combine(datetime.date.today(), datetime.time.min).replace(tzinfo=pytz.UTC)
-    fe.pubDate(pub_dt)
+    fe.title(title)
+    fe.link(href=BASE_SITE_URL + f"cnh-{date_str}.html")
+    fe.id(BASE_SITE_URL + f"cnh-{date_str}.html")
+    fe.pubDate(pub_date)
+    fe.enclosure(image_url, 0, "image/png")
 
-    # ✅ Register the media namespace before parsing RSS
-    etree.register_namespace("media", "http://search.yahoo.com/mrss/")
-    rss_bytes = fg.rss_str(pretty=True)
-    rss_root = etree.fromstring(rss_bytes)
+    fg.rss_file(RSS_FILE)
+    print(f"📡 Wrote RSS feed to {RSS_FILE}")
 
-    # ✅ Add media:content to <item>
-    channel = rss_root.find("channel")
-    latest_item = channel.find("item")
-    media_tag = etree.Element("{http://search.yahoo.com/mrss/}content", {
-        "url": img_url,
-        "type": "image/png" if ".png" in img_url.lower() else "image/jpeg"
-    })
-    latest_item.append(media_tag)
-
-    # Save updated RSS file
-    etree.ElementTree(rss_root).write(FEED_PATH, pretty_print=True, encoding="utf-8", xml_declaration=True)
-    print(f"📡 Wrote RSS feed to {FEED_PATH}")
+def update_index(latest_html):
+    index_path = os.path.join(DOCS_DIR, "index.html")
+    if os.path.exists(index_path):
+        os.remove(index_path)
+    os.symlink(os.path.basename(latest_html), index_path)
+    print(f"🔗 Updated index.html to point to {os.path.basename(latest_html)}")
 
 def main():
+    os.makedirs(DOCS_DIR, exist_ok=True)
+    today = datetime.datetime.now().strftime("%Y-%m-%d")
     urls = read_comic_urls()
-    today = datetime.date.today()
-    date_str = today.isoformat()
-
-    random.seed(str(today))  # Deterministic shuffle per day
-    random.shuffle(urls)
-
-    for i, comic_url in enumerate(urls[:MAX_RETRIES]):
-        print(f"🔄 Attempt {i+1}: {comic_url}")
-        html, final_url = fetch_comic_page(comic_url)
-        if not html:
-            continue
-
-        img_url = extract_comic_image(html, final_url)
+    for comic_url in urls[:10]:
+        print(f"🔄 Attempting: {comic_url}")
+        final_url, img_url = fetch_comic_image(comic_url)
         if img_url:
-            print(f"🖼️ Comic image: {img_url}")
-            html_filename = write_html_page(date_str, final_url, img_url)
-            update_index_html(html_filename)
-            build_rss_feed(date_str, html_filename, final_url, img_url)
-            return
-
-    print("❌ Failed to fetch comic image — check debug.html")
-    with open("debug.html", "w", encoding="utf-8") as f:
-        f.write(html if html else "")
+            html_file = generate_html(today, img_url, final_url)
+            generate_rss(today, f"Cyanide and Happiness - {today}", final_url, img_url)
+            update_index(html_file)
+            break
+    else:
+        print("❌ Failed to fetch a valid comic after multiple attempts.")
 
 if __name__ == "__main__":
     main()
+
