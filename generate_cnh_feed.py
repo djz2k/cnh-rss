@@ -27,18 +27,28 @@ def fetch_comic_image(comic_url):
         redirected_url = first_resp.url
         print(f"🔁 Redirected to: {redirected_url}")
 
-        # Re-fetch content from final URL
         resp = requests.get(redirected_url, timeout=10)
         soup = BeautifulSoup(resp.text, "html.parser")
 
-        # Save for debugging
         with open(DEBUG_FILE, "w") as dbg:
             dbg.write(soup.prettify())
 
+        # Try og:image first
         og_image = soup.find("meta", property="og:image")
         if og_image and og_image.get("content"):
             img_url = og_image["content"]
-            print(f"🖼️ Comic image: {img_url}")
+            print(f"🖼️ Found og:image: {img_url}")
+            return redirected_url, img_url
+
+        # Fallback: #comic-wrap img
+        img_tag = soup.select_one("#comic-wrap img")
+        if img_tag and img_tag.get("src"):
+            img_url = img_tag["src"]
+            if img_url.startswith("//"):
+                img_url = "https:" + img_url
+            elif img_url.startswith("/"):
+                img_url = "https://explosm.net" + img_url
+            print(f"🖼️ Fallback image: {img_url}")
             return redirected_url, img_url
 
         print("⚠️ Couldn't find comic image on page")
