@@ -6,6 +6,7 @@ from feedgen.feed import FeedGenerator
 from urllib.parse import urljoin
 from lxml import etree
 import pytz
+import random
 
 # Constants
 MAX_RETRIES = 3
@@ -32,22 +33,24 @@ def fetch_comic_page(url):
 
 def extract_comic_image(html, base_url):
     soup = BeautifulSoup(html, "html.parser")
-    
+
+    # First try <meta property="og:image">
     og_img = soup.find("meta", property="og:image")
     if og_img and og_img.get("content"):
         return og_img["content"]
-    
-    main = soup.find("div", class_="MainComic")
-    if main:
-        img_tag = main.find("img")
-        if img_tag and img_tag.get("src"):
-            return urljoin(base_url, img_tag["src"])
-    
+
+    # Fallback: look for <img> inside any comic section (explosm has updated classes)
+    for img_tag in soup.find_all("img"):
+        src = img_tag.get("src", "")
+        if "files.explosm.net/comics" in src:
+            return src if src.startswith("http") else urljoin(base_url, src)
+
     print("⚠️ Couldn't find comic image on page")
     return None
 
 def write_html_page(date_str, comic_url, img_url):
-    html_url = f"cnh-{date_str}.html"
+    html_filename = f"cnh-{date_str}.html"
+    full_url = BASE_SITE_URL + html_filename
     html = f"""<!DOCTYPE html>
 <html>
   <head>
@@ -55,7 +58,7 @@ def write_html_page(date_str, comic_url, img_url):
     <title>Cyanide & Happiness – {date_str}</title>
     <meta property="og:title" content="Cyanide & Happiness – {date_str}">
     <meta property="og:image" content="{img_url}">
-    <meta property="og:url" content="{BASE_SITE_URL}{html_url}">
+    <meta property="og:url" content="{full_url}">
     <meta name="twitter:card" content="summary_large_image">
   </head>
   <body>
@@ -63,11 +66,11 @@ def write_html_page(date_str, comic_url, img_url):
     <p><a href="{comic_url}"><img src="{img_url}" alt="Comic for {date_str}"></a></p>
   </body>
 </html>"""
-    out_path = os.path.join(HTML_OUTPUT_PATH, html_url)
+    out_path = os.path.join(HTML_OUTPUT_PATH, html_filename)
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(html)
     print(f"✅ Wrote HTML to {out_path}")
-    return html_url
+    return html_filename
 
 def update_index_html(latest_html_filename):
     with open(INDEX_HTML_PATH, "w", encoding="utf-8") as f:
@@ -90,12 +93,10 @@ def build_rss_feed(date_str, html_filename, comic_url, img_url):
     pub_dt = datetime.datetime.combine(datetime.date.today(), datetime.time.min).replace(tzinfo=pytz.UTC)
     fe.pubDate(pub_dt)
 
-    # Save feed to XML string
     rss_bytes = fg.rss_str(pretty=True)
     rss_root = etree.fromstring(rss_bytes)
     rss_root.set("xmlns:media", "http://search.yahoo.com/mrss/")
 
-    # Add <media:content> to latest entry
     channel = rss_root.find("channel")
     latest_item = channel.find("item")
     media_tag = etree.Element("{http://search.yahoo.com/mrss/}content", {
@@ -104,7 +105,6 @@ def build_rss_feed(date_str, html_filename, comic_url, img_url):
     })
     latest_item.append(media_tag)
 
-    # Save to file
     etree.ElementTree(rss_root).write(FEED_PATH, pretty_print=True, encoding="utf-8", xml_declaration=True)
     print(f"📡 Wrote RSS feed to {FEED_PATH}")
 
@@ -112,6 +112,9 @@ def main():
     urls = read_comic_urls()
     today = datetime.date.today()
     date_str = today.isoformat()
+
+    random.seed(str(today))  # ensure repeatable selection for the day
+    random.shuffle(urls)
 
     for i, comic_url in enumerate(urls[:MAX_RETRIES]):
         print(f"🔄 Attempt {i+1}: {comic_url}")
@@ -121,7 +124,7 @@ def main():
 
         img_url = extract_comic_image(html, final_url)
         if img_url:
-            print(f"🖼️ Fallback image: {img_url}")
+            print(f"🖼️ Comic image: {img_url}")
             html_filename = write_html_page(date_str, final_url, img_url)
             update_index_html(html_filename)
             build_rss_feed(date_str, html_filename, final_url, img_url)
