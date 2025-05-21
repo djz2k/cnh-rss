@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os
+import shutil
 import requests
 from bs4 import BeautifulSoup
 from feedgen.feed import FeedGenerator
@@ -40,13 +41,20 @@ def fetch_comic_image(comic_url):
             print(f"🖼️ Found og:image: {img_url}")
             return redirected_url, img_url
 
-        # Try link rel preload image
+        # Try preload link
         preload_links = soup.find_all("link", rel="preload", attrs={"as": "image"})
         for link in preload_links:
             href = link.get("href", "")
             if "files.explosm.net/comics" in href:
                 print(f"🖼️ Found preload image: {href}")
                 return redirected_url, href
+
+        # Try #comic-wrap img
+        wrap_img = soup.select_one("#comic-wrap img")
+        if wrap_img and wrap_img.get("src"):
+            img_url = wrap_img["src"]
+            print(f"🖼️ Fallback #comic-wrap img: {img_url}")
+            return redirected_url, img_url
 
         print("⚠️ Couldn't find comic image on page")
         return redirected_url, None
@@ -84,9 +92,12 @@ def generate_rss(date_str, title, comic_url, image_url):
     fg.title("Cyanide and Happiness Daily")
     fg.link(href=BASE_SITE_URL + "cnh-clean.xml", rel="self")
     fg.link(href=BASE_SITE_URL)
-    fg.description("Daily Cyanide and Happiness comic from Explosm.net")  # ✅ Required
+    fg.description("Daily Cyanide and Happiness comic from Explosm.net")
 
-    pub_date = datetime.datetime.combine(datetime.datetime.strptime(date_str, "%Y-%m-%d").date(), datetime.time.min).replace(tzinfo=pytz.UTC)
+    pub_date = datetime.datetime.combine(
+        datetime.datetime.strptime(date_str, "%Y-%m-%d").date(),
+        datetime.time.min
+    ).replace(tzinfo=pytz.UTC)
 
     fe = fg.add_entry()
     fe.id(BASE_SITE_URL + f"cnh-{date_str}.html")
@@ -101,9 +112,7 @@ def generate_rss(date_str, title, comic_url, image_url):
 
 def update_index(latest_html):
     index_path = os.path.join(DOCS_DIR, "index.html")
-    if os.path.exists(index_path):
-        os.remove(index_path)
-    os.symlink(os.path.basename(latest_html), index_path)
+    shutil.copyfile(latest_html, index_path)
     print(f"🔗 Updated index.html to point to {os.path.basename(latest_html)}")
 
 def main():
