@@ -7,11 +7,13 @@ from feedgen.feed import FeedGenerator
 import datetime
 import pytz
 import shutil
+import json
 
 # ---------------- Configuration ----------------
 
 BASE_SITE_URL = "https://djz2k.github.io/cnh-rss/"
 COMIC_URL_FILE = "comic_urls.txt"
+USED_LOG = "used_comics.json"
 DOCS_DIR = "docs"
 RSS_FILE = os.path.join(DOCS_DIR, "cnh-clean.xml")
 INDEX_FILE = os.path.join(DOCS_DIR, "index.html")
@@ -24,6 +26,16 @@ print(f"🌐 Using BASE_SITE_URL: {BASE_SITE_URL}")
 def read_comic_urls():
     with open(COMIC_URL_FILE, "r") as f:
         return [line.strip() for line in f if line.strip()]
+
+def read_used_comics():
+    if os.path.exists(USED_LOG):
+        with open(USED_LOG, "r") as f:
+            return json.load(f)
+    return []
+
+def write_used_comics(used_list):
+    with open(USED_LOG, "w") as f:
+        json.dump(used_list, f)
 
 def fetch_comic_image(comic_url):
     try:
@@ -38,14 +50,12 @@ def fetch_comic_image(comic_url):
         with open(DEBUG_FILE, "w") as dbg:
             dbg.write(soup.prettify())
 
-        # Priority 1: og:image
         og_image = soup.find("meta", property="og:image")
         if og_image and og_image.get("content"):
             img_url = og_image["content"]
             print(f"🖼️ Found og:image: {img_url}")
             return final_url, img_url
 
-        # Priority 2: <link rel="preload" as="image">
         preload_links = soup.find_all("link", rel="preload", attrs={"as": "image"})
         for link in preload_links:
             href = link.get("href", "")
@@ -53,7 +63,6 @@ def fetch_comic_image(comic_url):
                 print(f"🖼️ Found preload image: {href}")
                 return final_url, href
 
-        # Priority 3: #comic-wrap img
         img = soup.select_one("#comic-wrap img")
         if img and img.get("src"):
             img_url = img["src"]
@@ -124,13 +133,18 @@ def main():
     os.makedirs(DOCS_DIR, exist_ok=True)
     today = datetime.datetime.now().strftime("%Y-%m-%d")
     urls = read_comic_urls()
+    used = set(read_used_comics())
 
-    for comic_url in urls[:10]:
+    for comic_url in urls:
+        if comic_url in used:
+            continue
         final_url, img_url = fetch_comic_image(comic_url)
         if img_url:
             html_file = generate_html(today, img_url, final_url)
             generate_rss(today, f"Cyanide and Happiness - {today}", final_url, img_url)
             update_index(html_file)
+            used.add(comic_url)
+            write_used_comics(list(used))
             return
 
     print("❌ Failed to fetch a valid comic after multiple attempts.")
