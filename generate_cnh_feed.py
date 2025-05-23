@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
 
 import os
+import json
 import requests
 from bs4 import BeautifulSoup
 from feedgen.feed import FeedGenerator
 import datetime
 import pytz
 import shutil
-import json
 
 # ---------------- Configuration ----------------
 
 BASE_SITE_URL = "https://djz2k.github.io/cnh-rss/"
 COMIC_URL_FILE = "comic_urls.txt"
-USED_LOG = "used_comics.json"
 DOCS_DIR = "docs"
 RSS_FILE = os.path.join(DOCS_DIR, "cnh-clean.xml")
 INDEX_FILE = os.path.join(DOCS_DIR, "index.html")
 DEBUG_FILE = "debug.html"
+USED_COMICS_FILE = "used_comics.json"
 
 print(f"🌐 Using BASE_SITE_URL: {BASE_SITE_URL}")
 
@@ -27,15 +27,15 @@ def read_comic_urls():
     with open(COMIC_URL_FILE, "r") as f:
         return [line.strip() for line in f if line.strip()]
 
-def read_used_comics():
-    if os.path.exists(USED_LOG):
-        with open(USED_LOG, "r") as f:
-            return json.load(f)
-    return []
+def load_used_comics():
+    if os.path.exists(USED_COMICS_FILE):
+        with open(USED_COMICS_FILE, "r") as f:
+            return set(json.load(f))
+    return set()
 
-def write_used_comics(used_list):
-    with open(USED_LOG, "w") as f:
-        json.dump(used_list, f)
+def save_used_comics(used):
+    with open(USED_COMICS_FILE, "w") as f:
+        json.dump(sorted(list(used)), f)
 
 def fetch_comic_image(comic_url):
     try:
@@ -132,19 +132,19 @@ def update_index(latest_html_path):
 def main():
     os.makedirs(DOCS_DIR, exist_ok=True)
     today = datetime.datetime.now().strftime("%Y-%m-%d")
-    urls = read_comic_urls()
-    used = set(read_used_comics())
 
-    for comic_url in urls:
-        if comic_url in used:
-            continue
+    all_urls = read_comic_urls()
+    used_comics = load_used_comics()
+    fresh_urls = [u for u in all_urls if u not in used_comics]
+
+    for comic_url in fresh_urls[:10]:
         final_url, img_url = fetch_comic_image(comic_url)
         if img_url:
             html_file = generate_html(today, img_url, final_url)
             generate_rss(today, f"Cyanide and Happiness - {today}", final_url, img_url)
             update_index(html_file)
-            used.add(comic_url)
-            write_used_comics(list(used))
+            used_comics.add(comic_url)
+            save_used_comics(used_comics)
             return
 
     print("❌ Failed to fetch a valid comic after multiple attempts.")
