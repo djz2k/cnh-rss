@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
 
 import os
-import json
 import requests
 from bs4 import BeautifulSoup
 from feedgen.feed import FeedGenerator
 import datetime
 import pytz
 import shutil
+import json
 
 # ---------------- Configuration ----------------
 
 BASE_SITE_URL = "https://djz2k.github.io/cnh-rss/"
 COMIC_URL_FILE = "comic_urls.txt"
+USED_COMICS_FILE = "used_comics.json"
 DOCS_DIR = "docs"
 RSS_FILE = os.path.join(DOCS_DIR, "cnh-clean.xml")
 INDEX_FILE = os.path.join(DOCS_DIR, "index.html")
 DEBUG_FILE = "debug.html"
-USED_COMICS_FILE = "used_comics.json"
 
 print(f"🌐 Using BASE_SITE_URL: {BASE_SITE_URL}")
 
@@ -27,15 +27,17 @@ def read_comic_urls():
     with open(COMIC_URL_FILE, "r") as f:
         return [line.strip() for line in f if line.strip()]
 
-def load_used_comics():
+def read_used_comics():
     if os.path.exists(USED_COMICS_FILE):
         with open(USED_COMICS_FILE, "r") as f:
             return set(json.load(f))
     return set()
 
-def save_used_comics(used):
+def write_used_comic(url):
+    used = read_used_comics()
+    used.add(url)
     with open(USED_COMICS_FILE, "w") as f:
-        json.dump(sorted(list(used)), f)
+        json.dump(sorted(list(used)), f, indent=2)
 
 def fetch_comic_image(comic_url):
     try:
@@ -50,12 +52,14 @@ def fetch_comic_image(comic_url):
         with open(DEBUG_FILE, "w") as dbg:
             dbg.write(soup.prettify())
 
+        # Priority 1: og:image
         og_image = soup.find("meta", property="og:image")
         if og_image and og_image.get("content"):
             img_url = og_image["content"]
             print(f"🖼️ Found og:image: {img_url}")
             return final_url, img_url
 
+        # Priority 2: <link rel="preload" as="image">
         preload_links = soup.find_all("link", rel="preload", attrs={"as": "image"})
         for link in preload_links:
             href = link.get("href", "")
@@ -63,6 +67,7 @@ def fetch_comic_image(comic_url):
                 print(f"🖼️ Found preload image: {href}")
                 return final_url, href
 
+        # Priority 3: #comic-wrap img
         img = soup.select_one("#comic-wrap img")
         if img and img.get("src"):
             img_url = img["src"]
@@ -132,19 +137,19 @@ def update_index(latest_html_path):
 def main():
     os.makedirs(DOCS_DIR, exist_ok=True)
     today = datetime.datetime.now().strftime("%Y-%m-%d")
+    urls = read_comic_urls()
+    used = read_used_comics()
 
-    all_urls = read_comic_urls()
-    used_comics = load_used_comics()
-    fresh_urls = [u for u in all_urls if u not in used_comics]
+    for comic_url in urls:
+        if comic_url in used:
+            continue
 
-    for comic_url in fresh_urls[:10]:
         final_url, img_url = fetch_comic_image(comic_url)
         if img_url:
             html_file = generate_html(today, img_url, final_url)
             generate_rss(today, f"Cyanide and Happiness - {today}", final_url, img_url)
             update_index(html_file)
-            used_comics.add(comic_url)
-            save_used_comics(used_comics)
+            write_used_comic(comic_url)
             return
 
     print("❌ Failed to fetch a valid comic after multiple attempts.")
