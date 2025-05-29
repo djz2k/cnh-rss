@@ -33,9 +33,9 @@ def read_used_comics():
             return set(json.load(f))
     return set()
 
-def write_used_comic(url):
+def write_used_comic(final_url):
     used = read_used_comics()
-    used.add(url)
+    used.add(final_url)
     with open(USED_COMICS_FILE, "w") as f:
         json.dump(sorted(list(used)), f, indent=2)
 
@@ -138,18 +138,19 @@ def main():
     os.makedirs(DOCS_DIR, exist_ok=True)
     today = datetime.datetime.now().strftime("%Y-%m-%d")
     urls = read_comic_urls()
-    used = read_used_comics()
+    used_final_urls = read_used_comics()
 
     for comic_url in urls:
-        if comic_url in used:
+        final_url, img_url = fetch_comic_image(comic_url)
+        if final_url in used_final_urls:
+            print(f"🚫 Already used: {final_url}")
             continue
 
-        final_url, img_url = fetch_comic_image(comic_url)
         if img_url:
             html_file = generate_html(today, img_url, final_url)
             generate_rss(today, f"Cyanide and Happiness - {today}", final_url, img_url)
             update_index(html_file)
-            write_used_comic(comic_url)
+            write_used_comic(final_url)
             return
 
     print("❌ Failed to fetch a valid comic after multiple attempts.")
