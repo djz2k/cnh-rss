@@ -39,6 +39,9 @@ def write_used_comic(final_url):
     with open(USED_COMICS_FILE, "w") as f:
         json.dump(sorted(list(used)), f, indent=2)
 
+def clean_url(url):
+    return url.split("?")[0] if url else url
+
 def fetch_comic_image(comic_url):
     try:
         print(f"🔄 Attempting: {comic_url}")
@@ -55,14 +58,14 @@ def fetch_comic_image(comic_url):
         # Priority 1: og:image
         og_image = soup.find("meta", property="og:image")
         if og_image and og_image.get("content"):
-            img_url = og_image["content"]
+            img_url = clean_url(og_image["content"])
             print(f"🖼️ Found og:image: {img_url}")
             return final_url, img_url
 
         # Priority 2: <link rel="preload" as="image">
         preload_links = soup.find_all("link", rel="preload", attrs={"as": "image"})
         for link in preload_links:
-            href = link.get("href", "")
+            href = clean_url(link.get("href", ""))
             if "files.explosm.net/comics" in href:
                 print(f"🖼️ Found preload image: {href}")
                 return final_url, href
@@ -70,7 +73,7 @@ def fetch_comic_image(comic_url):
         # Priority 3: #comic-wrap img
         img = soup.select_one("#comic-wrap img")
         if img and img.get("src"):
-            img_url = img["src"]
+            img_url = clean_url(img["src"])
             print(f"🖼️ Fallback #comic-wrap img: {img_url}")
             return final_url, img_url
 
