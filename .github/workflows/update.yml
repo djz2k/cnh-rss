@@ -30,6 +30,10 @@ jobs:
       - name: Run generator script
         run: python generate_cnh_feed.py
 
+      - name: Ensure .nojekyll file exists
+        run: |
+          touch docs/.nojekyll
+
       - name: Upload debug.html if present
         if: always()
         uses: actions/upload-artifact@v4
@@ -49,18 +53,18 @@ jobs:
           chmod +x askpass.sh
           export GIT_ASKPASS=./askpass.sh
 
-          # Clean and update working directory
+          # Clean and re-sync working directory
           git reset --hard
           git clean -fd
           git pull --rebase
 
-          # Show current contents of docs folder
-          echo "📂 Contents of docs/ before commit:"
+          echo "📂 Docs folder contents:"
           ls -lh docs/
 
-          echo "📄 Git status before commit:"
+          echo "📄 Git status:"
           git status
 
           git add docs/
+          git add .github/workflows/update.yml || true
           git commit -m "🤖 Daily CNH update: $(date +'%Y-%m-%d')" || echo "🟡 No changes to commit"
           git push https://x-access-token:${GH_PAT}@github.com/${{ github.repository }} HEAD:main
