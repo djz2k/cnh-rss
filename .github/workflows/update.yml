@@ -12,12 +12,12 @@ jobs:
       contents: write
 
     steps:
-      - name: Checkout code using GH_PAT
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GH_PAT }}
 
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -27,22 +27,18 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run generator script
+      - name: Run generator
         run: python generate_cnh_feed.py
 
-      - name: Ensure .nojekyll file exists
-        run: |
-          touch docs/.nojekyll
-
-      - name: Upload debug.html if present
-        if: always()
+      - name: Upload debug file if present
+        if: failure() || always()
         uses: actions/upload-artifact@v4
         with:
-          name: debug-html
+          name: cnh-debug-html
           path: debug.html
           if-no-files-found: ignore
 
-      - name: Commit and push results
+      - name: Commit and push changes
         env:
           GH_PAT: ${{ secrets.GH_PAT }}
         run: |
@@ -53,18 +49,12 @@ jobs:
           chmod +x askpass.sh
           export GIT_ASKPASS=./askpass.sh
 
-          # Clean and re-sync working directory
           git reset --hard
           git clean -fd
-          git pull --rebase
+          git pull --rebase origin main
 
-          echo "📂 Docs folder contents:"
-          ls -lh docs/
+          # Stage all possible output files
+          git add docs/*.html docs/*.xml used_comics.json
 
-          echo "📄 Git status:"
-          git status
-
-          git add docs/
-          git add .github/workflows/update.yml || true
           git commit -m "🤖 Daily CNH update: $(date +'%Y-%m-%d')" || echo "🟡 No changes to commit"
           git push https://x-access-token:${GH_PAT}@github.com/${{ github.repository }} HEAD:main
