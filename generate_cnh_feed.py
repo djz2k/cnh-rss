@@ -1,162 +1,115 @@
 #!/usr/bin/env python3
-
 import os
-import requests
-from bs4 import BeautifulSoup
-from feedgen.feed import FeedGenerator
-import datetime
-import pytz
-import shutil
 import json
-
-# ---------------- Configuration ----------------
+import datetime
+from feedgen.feed import FeedGenerator
 
 BASE_SITE_URL = "https://djz2k.github.io/cnh-rss/"
-COMIC_URL_FILE = "comic_urls.txt"
-USED_COMICS_FILE = "used_comics.json"
 DOCS_DIR = "docs"
-RSS_FILE = os.path.join(DOCS_DIR, "cnh-clean.xml")
-INDEX_FILE = os.path.join(DOCS_DIR, "index.html")
-DEBUG_FILE = "debug.html"
+USED_COMICS_FILE = "used_comics.json"
 
-print(f"🌐 Using BASE_SITE_URL: {BASE_SITE_URL}")
-
-# ---------------- Helpers ----------------
-
-def read_comic_urls():
-    with open(COMIC_URL_FILE, "r") as f:
-        return [line.strip() for line in f if line.strip()]
+def get_today():
+    return datetime.date.today().isoformat()
 
 def load_used_comics():
     if os.path.exists(USED_COMICS_FILE):
-        with open(USED_COMICS_FILE, "r") as f:
-            return set(json.load(f))
-    return set()
+        with open(USED_COMICS_FILE) as f:
+            return json.load(f)
+    return {}
 
-def save_used_comics(used):
+def save_used_comics(data):
     with open(USED_COMICS_FILE, "w") as f:
-        json.dump(sorted(list(used)), f, indent=2)
+        json.dump(data, f, indent=2)
 
-def fetch_comic_image(comic_url):
-    try:
-        print(f"🔄 Attempting: {comic_url}")
-        first_resp = requests.get(comic_url, timeout=10)
-        final_url = first_resp.url
-        print(f"🔁 Redirected to: {final_url}")
+def build_comic_page(date, img_url):
+    filename = f"cnh-{date}.html"
+    html_path = os.path.join(DOCS_DIR, filename)
+    page_url = f"{BASE_SITE_URL}{filename}"
 
-        resp = requests.get(final_url, timeout=10)
-        soup = BeautifulSoup(resp.text, "html.parser")
-
-        with open(DEBUG_FILE, "w") as dbg:
-            dbg.write(soup.prettify())
-
-        # Priority 1: og:image
-        og_image = soup.find("meta", property="og:image")
-        if og_image and og_image.get("content"):
-            img_url = og_image["content"]
-            print(f"🖼️ Found og:image: {img_url}")
-            return final_url, img_url
-
-        # Priority 2: <link rel="preload" as="image">
-        preload_links = soup.find_all("link", rel="preload", attrs={"as": "image"})
-        for link in preload_links:
-            href = link.get("href", "")
-            if "files.explosm.net/comics" in href:
-                print(f"🖼️ Found preload image: {href}")
-                return final_url, href
-
-        # Priority 3: #comic-wrap img
-        img = soup.select_one("#comic-wrap img")
-        if img and img.get("src"):
-            img_url = img["src"]
-            print(f"🖼️ Fallback #comic-wrap img: {img_url}")
-            return final_url, img_url
-
-        print("⚠️ Couldn't find comic image on page")
-        return final_url, None
-
-    except Exception as e:
-        print(f"❌ Error fetching comic image: {e}")
-        return comic_url, None
-
-def generate_html(date_str, image_url, comic_page_url):
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta property="og:title" content="Cyanide and Happiness - {date_str}" />
-  <meta property="og:image" content="{image_url}" />
-  <meta property="og:url" content="{BASE_SITE_URL}cnh-{date_str}.html" />
-  <title>Cyanide and Happiness - {date_str}</title>
+  <meta charset="UTF-8">
+  <title>Cyanide and Happiness - {date}</title>
+  <meta property="og:title" content="Cyanide and Happiness - {date}" />
+  <meta property="og:type" content="article" />
+  <meta property="og:url" content="{page_url}" />
+  <meta property="og:image" content="{img_url}" />
+  <meta property="og:description" content="Daily Cyanide and Happiness comic." />
 </head>
 <body>
-  <a href="{comic_page_url}">
-    <img src="{image_url}" alt="Comic for {date_str}" style="width:100%;max-width:800px;">
-  </a>
+  <h1>Cyanide and Happiness - {date}</h1>
+  <img src="{img_url}" alt="Cyanide and Happiness Comic">
 </body>
 </html>"""
-    filepath = os.path.join(DOCS_DIR, f"cnh-{date_str}.html")
-    with open(filepath, "w") as f:
+    with open(html_path, "w") as f:
         f.write(html)
-    print(f"✅ Wrote HTML to {filepath}")
-    return filepath
+    return page_url
 
-def generate_rss(date_str, title, comic_page_url, image_url):
+def generate_index_page(latest_date, latest_url):
+    with open(os.path.join(DOCS_DIR, "index.html"), "w") as f:
+        f.write(f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Cyanide and Happiness Feed</title></head>
+<body>
+<h1>Cyanide and Happiness Daily Comic</h1>
+<p>Latest comic: <a href="{latest_url}">{latest_date}</a></p>
+<p><a href="cnh-clean.xml">RSS Feed</a></p>
+</body></html>""")
+
+def generate_status_page(latest_date, latest_url):
+    with open(os.path.join(DOCS_DIR, "status.html"), "w") as f:
+        f.write(f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Feed Status</title></head>
+<body>
+<h1>Feed Status</h1>
+<p>Last updated: {latest_date}</p>
+<p><a href="{latest_url}">Latest Comic</a></p>
+<p><a href="cnh-clean.xml">RSS Feed</a></p>
+</body></html>""")
+
+def generate_feed(comics):
     fg = FeedGenerator()
     fg.load_extension('media')
+
     fg.title("Cyanide and Happiness Daily")
-    fg.link(href=BASE_SITE_URL + "cnh-clean.xml", rel="self")
-    fg.link(href=BASE_SITE_URL)
+    fg.link(href=BASE_SITE_URL, rel='alternate')
     fg.description("Daily Cyanide and Happiness comic from Explosm.net")
+    fg.language('en')
+    fg.atom_link(href=f"{BASE_SITE_URL}cnh-clean.xml", rel="self")
+    fg.generator("python-feedgen")
 
-    pub_date = datetime.datetime.combine(
-        datetime.datetime.strptime(date_str, "%Y-%m-%d").date(),
-        datetime.time.min
-    ).replace(tzinfo=pytz.UTC)
+    for date, url in sorted(comics.items(), reverse=True):
+        entry = fg.add_entry()
+        entry.title(f"Cyanide and Happiness - {date}")
+        entry.link(href=url)
+        entry.guid(url, permalink=False)
+        entry.pubDate(datetime.datetime.strptime(date, "%Y-%m-%d"))
+        entry.description(f'<img src="{url.replace(".html", ".jpg")}" alt="Cyanide and Happiness Comic" />')
+        entry.media.content(url=url.replace(".html", ".jpg"), medium="image")
 
-    fe = fg.add_entry()
-    fe.id(BASE_SITE_URL + f"cnh-{date_str}.html")
-    fe.title(title)
-    fe.link(href=BASE_SITE_URL + f"cnh-{date_str}.html")
-    fe.pubDate(pub_date)
-    # Inline description with image
-    fe.description(f'<p>Cyanide and Happiness comic for {date_str}.</p><img src="{image_url}" alt="Cyanide and Happiness Comic" />')
-    fe.media.content({'url': image_url, 'medium': 'image'})
-
-    fg.rss_file(RSS_FILE)
-    print(f"📡 Wrote RSS feed to {RSS_FILE}")
-
-def update_index(latest_html_path):
-    shutil.copyfile(latest_html_path, INDEX_FILE)
-    print(f"🔗 Updated index.html to point to {os.path.basename(latest_html_path)}")
-
-# ---------------- Main ----------------
+    fg.rss_file(os.path.join(DOCS_DIR, "cnh-clean.xml"))
 
 def main():
-    os.makedirs(DOCS_DIR, exist_ok=True)
-    today = datetime.datetime.now().strftime("%Y-%m-%d")
-    all_urls = read_comic_urls()
-    used = load_used_comics()
+    used_comics = load_used_comics()
+    today = get_today()
 
-    # Try fresh (in order) comics
-    for comic_url in all_urls:
-        if comic_url in used:
-            print(f"🚫 Already used: {comic_url}")
-            continue
-
-        final_url, img_url = fetch_comic_image(comic_url)
-        if not img_url:
-            continue
-
-        # Found new comic
-        html_path = generate_html(today, img_url, final_url)
-        generate_rss(today, f"Cyanide and Happiness - {today}", final_url, img_url)
-        update_index(html_path)
-
-        used.add(comic_url)
-        save_used_comics(used)
-
+    # You must ensure this is populated externally or manually (from your pre-crawled list)
+    if today in used_comics:
+        print(f"🟡 Comic for {today} already processed.")
         return
 
-    print("❌ Failed to fetch a valid comic (all tried are used or missing image)")
+    # Example usage: replace this with actual image logic if using AI/API
+    fake_img_url = f"https://files.explosm.net/comics/Kris/opinion.png"
+    page_url = build_comic_page(today, fake_img_url)
+
+    used_comics[today] = page_url
+    save_used_comics(used_comics)
+
+    generate_index_page(today, page_url)
+    generate_status_page(today, page_url)
+    generate_feed(used_comics)
+
+    print(f"✅ Generated comic for {today}")
+
+if __name__ == "__main__":
+    main()
