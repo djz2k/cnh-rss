@@ -75,7 +75,7 @@ def generate_feed(comics):
     fg.link(href=BASE_SITE_URL, rel='alternate')
     fg.description("Daily Cyanide and Happiness comic from Explosm.net")
     fg.language('en')
-    fg.atom_link(href=f"{BASE_SITE_URL}cnh-clean.xml", rel="self")
+    fg.atom(link=f"{BASE_SITE_URL}cnh-clean.xml", rel="self")
     fg.generator("python-feedgen")
 
     for date, url in sorted(comics.items(), reverse=True):
