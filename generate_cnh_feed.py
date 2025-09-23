@@ -9,6 +9,7 @@ from feedgen.feed import FeedGenerator
 BASE_SITE_URL = "https://djz2k.github.io/cnh-rss/"
 DOCS_DIR = "docs"
 USED_COMICS_FILE = "used_comics.json"
+HEADERS = {"User-Agent": "Mozilla/5.0"}
 
 def get_today():
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
@@ -23,23 +24,13 @@ def save_used_comics(data):
     with open(USED_COMICS_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
-def fetch_latest_comic_url():
-    print("🔍 Fetching latest comic page...")
-    url = "https://explosm.net/"
-    res = requests.get(url)
-    soup = BeautifulSoup(res.content, "html.parser")
-
-    try:
-        og_image = soup.find("meta", property="og:image")
-        if og_image:
-            image_url = og_image["content"]
-            if image_url.endswith(".png") or image_url.endswith(".jpg"):
-                print(f"✅ Found comic image: {image_url}")
-                return image_url
-    except Exception as e:
-        print(f"⚠️ Error extracting comic image: {e}")
-
-    print("❌ Could not find latest comic URL.")
+def extract_comic_image_url(page_content):
+    soup = BeautifulSoup(page_content, "html.parser")
+    container = soup.find("div", class_="MainComic__ComicImage-sc-ndbx87-2")
+    if container:
+        img_tag = container.find("img")
+        if img_tag and img_tag.get("src"):
+            return img_tag["src"]
     return None
 
 def build_comic_page(date, img_url):
@@ -90,8 +81,6 @@ def generate_status_page(latest_date, latest_url):
 
 def generate_feed(comics):
     fg = FeedGenerator()
-    fg.load_extension('media')
-
     fg.title("Cyanide and Happiness Daily")
     fg.link(href=BASE_SITE_URL, rel='alternate')
     fg.description("Daily Cyanide and Happiness comic from Explosm.net")
@@ -99,17 +88,15 @@ def generate_feed(comics):
     fg.generator("python-feedgen")
 
     for date, url in sorted(comics.items(), reverse=True):
-        image_url = url.replace(".html", ".jpg")  # Assumes JPG extension
         entry = fg.add_entry()
         entry.title(f"Cyanide and Happiness - {date}")
         entry.link(href=url)
         entry.guid(url, permalink=False)
-        entry.pubDate(datetime.datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=datetime.timezone.utc))
-        entry.description(f'<img src="{image_url}" alt="Cyanide and Happiness Comic" />')
-        entry.media.content(url=image_url, medium="image")
+        pubdate = datetime.datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=datetime.timezone.utc)
+        entry.published(pubdate)
+        entry.description(f'<img src="{url.replace(".html", ".jpg")}" alt="Cyanide and Happiness Comic" />')
 
     fg.rss_file(os.path.join(DOCS_DIR, "cnh-clean.xml"))
-    print("✅ Feed generated: docs/cnh-clean.xml")
 
 def main():
     used_comics = load_used_comics()
@@ -119,11 +106,20 @@ def main():
         print(f"🟡 Comic for {today} already processed.")
         return
 
-    img_url = fetch_latest_comic_url()
-    if not img_url:
+    print("🔍 Fetching latest comic page...")
+    try:
+        res = requests.get("https://explosm.net/", headers=HEADERS, timeout=10)
+        img_url = extract_comic_image_url(res.content)
+        if not img_url:
+            print("❌ Could not find latest comic URL.")
+            return
+    except Exception as e:
+        print(f"❌ Error fetching comic page: {e}")
         return
 
+    print(f"✅ Found comic image: {img_url}")
     page_url = build_comic_page(today, img_url)
+
     used_comics[today] = page_url
     save_used_comics(used_comics)
 
@@ -131,7 +127,7 @@ def main():
     generate_status_page(today, page_url)
     generate_feed(used_comics)
 
-    print(f"✅ Comic for {today} processed and published.")
+    print(f"✅ Generated comic for {today}")
 
 if __name__ == "__main__":
     main()
