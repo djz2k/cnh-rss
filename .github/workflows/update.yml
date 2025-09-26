@@ -27,10 +27,23 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Git pull first to avoid rebase issues
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git config credential.helper ""
+          echo "echo ${GH_PAT}" > askpass.sh
+          chmod +x askpass.sh
+          export GIT_ASKPASS=./askpass.sh
+
+          git pull --rebase origin main
+
       - name: Run generator script
         run: python generate_cnh_feed.py
 
-      - name: Ensure .nojekyll exists before committing
+      - name: Ensure .nojekyll exists
         run: touch docs/.nojekyll
 
       - name: Upload debug.html if present
@@ -48,18 +61,13 @@ jobs:
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git config credential.helper ""
-          echo "echo ${GH_PAT}" > askpass.sh
-          chmod +x askpass.sh
           export GIT_ASKPASS=./askpass.sh
-
-          git pull --rebase origin main
 
           echo "📂 Docs folder contents before add:"
           ls -lh docs/
 
-          # Force add important files
+          # Add and commit updated files
           git add -f docs/index.html docs/status.html docs/cnh-clean.xml docs/*.html docs/.nojekyll used_comics.json || true
-
           git status
 
           git commit -m "🤖 Daily CNH update: $(date +'%Y-%m-%d')" || echo "🟡 No changes to commit"
